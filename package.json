@@ -1,0 +1,35 @@
+{
+	"name": "opgg-data-miner",
+	"version": "0.1.0",
+	"description": "Tool to scrap data from Op.GG service.",
+	"author": "AgainPsychoX",
+	"license": "ISC",
+	"keywords": [
+		"opgg",
+		"league-of-legends",
+		"leagueoflegends",
+		"data"
+	],
+	"type": "module",
+	"main": "dist/index.js",
+	"bin": {
+		"opgg": "bin/index.js"
+	},
+	"scripts": {
+		"build": "tsc && tsc-alias",
+		"cli:js": "node --experimental-specifier-resolution=node --enable-source-maps ./dist/main.js",
+		"cli:ts": "node --experimental-specifier-resolution=node --loader ./ts-node-loader.js ./src/main.ts",
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"devDependencies": {
+		"ts-node": "^10.2.1",
+		"tsc-alias": "^1.3.9",
+		"tsconfig-paths": "^3.11.0",
+		"typescript": "^4.4.3"
+	},
+	"dependencies": {
+		"axios": "^0.21.4",
+		"commander": "^8.2.0",
+		"node-html-parser": "^5.2.0"
+	}
+}
