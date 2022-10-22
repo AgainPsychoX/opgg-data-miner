@@ -1,13 +1,14 @@
 import axios from "axios"
-import { parse } from "node-html-parser";
-import { OpggHistory } from "@/models/OpggHistory";
-import { commonHeaders } from "@/common";
-import { parseMatchOverview, parseMatchSummary } from "./match";
+// import { OpggHistory } from "@/models/OpggHistory";
+import { commonHeaders, Region } from "@/common";
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+const dataBeginTag = '<script id="__NEXT_DATA__" type="application/json">';
+const dataEndTag = '</script>';
+
 export const collectHistory = async (
-	server: string, 
+	region: Region, 
 	userName: string, 
 	options?: {
 		/**
@@ -15,162 +16,119 @@ export const collectHistory = async (
 		 * than provided date, or always if true, or never if false.
 		 */
 		update?: Date | boolean,
-		/**
-		 * Detail levels:
-		 * * summary - standard information listed without expanding game item.
-		 * * overview - summary data with overview tab after expanding game item (default).
-		 * * full - all tabs after expanding game item.
-		 * * extended - full details (unique to game) with all builds tabs (from all players).
-		 */
-		detailLevel?: 'summary' | 'overview' | 'full' | 'expanded',
-	}
+		gameType?: string,
+	},
 ) => {
-	// Prepare server var
-	server = server.toLowerCase();
-	if (!['eune', 'euw', 'na', 'lan', 'oce', 'ru', 'jp', 'br', 'tr', 'las', 'kr'].includes(server)) {
-		throw new Error('Unknown server. Supported servers: EUNE, EUW, NA, LAN, OCE, RU, JP, BR, TR, LAS, KR.');
-	}
-	if (server == 'kr') {
-		server = '';
-	}
-	else {
-		server += '.';
-	}
-
 	// Default options
 	if (!options) {
 		options = {};
 	}
-	if (!options.detailLevel) {
-		options.detailLevel = 'overview';
-	}
+	options.gameType ||= 'soloranked';
 
+	console.debug(`First request to get summonerId, last update timestamp, account stats and latest games, and some game-related assets.`);
+	const { data: rawData } = await axios({
+		method: 'GET',
+		url: `https://www.op.gg/summoners/${region}/${userName}`,
+		headers: commonHeaders,
+	});
+	const dataBeginTagOffset = rawData.indexOf(dataBeginTag);
+	if (dataBeginTagOffset < 0) {
+		throw new Error(`Couldn't find necessary data. Website changed again?`);
+	}
+	const dataEndTagOffset = rawData.indexOf(dataEndTag, dataBeginTagOffset);
+	const data = JSON.parse(rawData.substring(dataBeginTagOffset + dataBeginTag.length, dataEndTagOffset));
+	const summonerId = data.props.pageProps.data.summoner_id as string;
+
+	let wasUpdated = false;
 	// Try to update if required
 	// The `while` is used instead `if`, as there are 2 separate exits.
 	while (options.update) {
-		let summonerId; 
-		console.debug(`Getting summonerId for update request`);
-		{
-			const { data } = await axios({
-				method: 'GET',
-				url: `https://${server}op.gg/summoner/userName=${userName}`,
-				headers: Object.assign({
-					'x-requested-with': 'XMLHttpRequest',
-				}, commonHeaders), 
-			});
-
-			if (options.update !== true) {
-				const document = parse(data);
-				const timestamp = new Date(parseInt(document.querySelector('.LastUpdate span')!.getAttribute('data-datetime') || '') * 1000);
-				if (+options.update < +timestamp) {
-					console.debug(`Data is fresh enough, no update necessary (timestamp: ${timestamp.toJSON()})`);
-					break;
-				}
+		if (options.update !== true) {
+			const timestamp = new Date(data.props.pageProps.data.update_at);
+			if (+options.update < +timestamp) {
+				console.debug(`Data is fresh enough, no update necessary (timestamp: ${timestamp.toJSON()})`);
+				break;
 			}
-
-			summonerId = parseInt(data.substring(data.indexOf('summonerId=') + 11, 30));
-			console.debug(`summonerId: ${summonerId}`);
 		}
 
 		console.debug(`Requesting update and waiting as requested`);
 		{
 			const { data } = await axios({
 				method: 'POST',
-				url: 'https://na.op.gg/summoner/ajax/renew.json/',
-				data: { summonerId },
-				headers: commonHeaders,
+				url: `https://op.gg/api/v1.0/internal/bypass/summoners/${region}/${summonerId}/renewal`,
+				headers: commonHeaders
 			});
-			await sleep(parseInt(data.delay));
+			if (!data.data.finish)
+				await sleep(data.data.delay);
 		}
 
 		console.debug(`Request update status and wait as requested till finished`);
 		{
 			while (true) {
 				const { data } = await axios({
-					method: 'POST',
-					url: 'https://na.op.gg/summoner/ajax/renewStatus.json/',
-					data: { summonerId }
+					method: 'GET',
+					url: `https://op.gg/api/v1.0/internal/bypass/summoners/${region}/${summonerId}/renewal-status`,
+					headers: commonHeaders
 				});
-				const delay = parseInt(data.delay);
 
-				if (!delay) {
+				if (data.data.finish) {
+					console.debug(`Update finished. Last update at: ${new Date(data.data.last_updated_at).toJSON()}`);	
 					break;
 				}
-				await sleep(parseInt(data.delay));
+				await sleep(data.data.delay);
 			}
 		}
 
-		console.debug(`Update finished`);
+		wasUpdated = true;
 		break;
 	}
 
-	// Consume main page
-	console.debug(`Downloading main page`);
-	const { data } = await axios({
-		method: 'GET',
-		url: `https://${server}op.gg/summoner/userName=${userName}`,
-		headers: commonHeaders,
-	});
+	const games = [];
 
-	console.debug(`Parsing main page`);
-	let document = parse(data);
-	const summonerId = parseInt(document.querySelector('.GameListContainer')!.getAttribute('data-summoner-id') || '');
-	let lastInfo = parseInt(document.querySelector('.GameListContainer')!.getAttribute('data-last-info') || '');
+	const gamesLimitPerRequest = 20;
 
-	// Prepare results object
-	const result: OpggHistory = {
-		updateTime: new Date(parseInt(document.querySelector('.LastUpdate span')!.getAttribute('data-datetime') || '') * 1000),
-		summonerName: document.querySelector('.Name')!.innerText,
-		summonerLevel: parseInt(document.querySelector('.Level')!.innerText),
-		summary: {
-			rankedTier: document.querySelector('.SummonerRatingMedium .TierRank')!.innerText,
-			wins: parseInt(document.querySelector('.SummonerRatingMedium .WinLose .wins')?.innerText || '0'),
-			loses: parseInt(document.querySelector('.SummonerRatingMedium .WinLose .losses')?.innerText || '0'),
-		},
-		matches: [],
-	};
-
-	while (true) {
-		// Parse game matches from document
-		switch (options.detailLevel) {
-			case 'summary': {
-				for (const gameItem of document.querySelectorAll('.GameItem')) {
-					result.matches.push(parseMatchSummary(gameItem));
-				}
-				break;
-			}
-			case 'overview': {
-				for (const gameItem of document.querySelectorAll('.GameItem')) {
-					result.matches.push(await parseMatchOverview(gameItem, server));
-				}
-				break;
-			}
-			case 'full': {
-				throw new Error('not-implemented');
-			}
-			case 'expanded': {
-				throw new Error('not-implemented');
-			}
-		}
-
-		// Request more
-		console.debug(`Downloading next page`);
-		const response = await axios({
+	let endedAtParam;
+	if (wasUpdated && options.gameType == 'total') {
+		console.debug(`Requesting first games via API`);
+		const { data } = await axios({
 			method: 'GET',
-			url: `https://${server}op.gg/summoner/matches/ajax/averageAndList/startInfo=${lastInfo}&summonerId=${summonerId}`,
-			headers: Object.assign({
-				'x-requested-with': 'XMLHttpRequest',
-			}, commonHeaders), 
-			validateStatus: null,
+			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType}`,
+			headers: commonHeaders
 		});
-		if (response.status !== 200) {
-			console.debug(`No more pages or error occurred, finished.`);
-			break;
-		}
-		console.debug(`Parsing next page`);
-		document = parse(response.data.html);
-		lastInfo = response.data.lastInfo;
+		endedAtParam = encodeURIComponent(data.meta.last_game_created_at);
+		games.push(...data.data);
+		console.debug(`Games count: ${games.length}`);
+	}
+	else {
+		console.debug(`First games loaded from initial website load`);
+		endedAtParam = encodeURIComponent(data.props.pageProps.games.meta.last_game_created_at);
+		games.push(...data.props.pageProps.games.data);
+		console.debug(`Games count: ${games.length}`);
 	}
 
-	return result;
+	while (true) {
+		console.debug(`Requesting next games via API`);
+		const { data } = await axios({
+			method: 'GET',
+			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&ended_at=${endedAtParam}&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType}`,
+			headers: commonHeaders
+		});
+		endedAtParam = encodeURIComponent(data.meta.last_game_created_at);
+		games.push(...data.data);
+		console.debug(`Games count: ${games.length}`);
+		if (data.data.length < gamesLimitPerRequest) {
+			break;
+		}
+	}
+
+	games.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+
+	// Update raw data stuff as we want to return it for research proposes for now
+	data.props.pageProps.games.data = games;
+	data.props.pageProps.games.meta = {
+		first_game_created_at: games[0].created_at,
+		last_game_created_at: games[games.length - 1].created_at,
+	}
+
+	return { games, data };
 }

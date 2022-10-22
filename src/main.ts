@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 import fs from 'fs/promises';
-import { Command, Option } from "commander";
+import { Argument, Command } from "commander";
 import { collectHistory } from '@/collect/history';
+import { knownRegions, parseRegion, Region } from '@/common';
 
 // Global stuff
 const program = new Command();
 program
-	.version('0.1.0')
+	.version('0.2.0')
 	.description('Tool to scrap data from Op.GG service.')
 	.option('-d, --debug', 'output extra debugging')
 	// TODO: 
@@ -24,14 +25,11 @@ program
 // History command
 program
 	.command('history')
-	.argument('<server>', 'server which on account is registered')
-	.argument('<account>', 'account whom data is related')
-	.description('collect match history data for selected account name at selected server')
-	.addOption(
-		new Option('-d, --detail-level <detailLevel>', 'detail level for match history collection')
-			.choices(['summary', 'overview', 'full', 'expanded'])
-			.default('summary')
+	.addArgument(new Argument('<region>', 'region which on account is registered')
+		.argParser(parseRegion)
 	)
+	.argument('<account>', 'account whom data is related')
+	.description('collect match history data for selected account name at selected region')
 	.option('-u, --update [maxMinutes]', 'request update before collecting data, optionally only if older than provided', false)
 	// TODO: 
 	// .option('-o, --output [file]', 'file to where data should be outputted, with file extension defining format', 'data.json')
@@ -42,10 +40,13 @@ program
 	// 		.choices(['solo', 'flex', 'all'])
 	// 		.default('solo')
 	// )
-	.action(async (server: string, account: string, options: any, command: Command) => {
-		const data = await collectHistory(server, account, {
+	.action(async (region: Region | undefined, account: string, options: any, command: Command) => {
+		if (!region) {
+			console.error(`Unknown region. Supported regions: ${knownRegions.map(x => x.toUpperCase()).join(', ')}.`);
+			return;
+		}
+		const { data } = await collectHistory(region, account, {
 			update: options.update ? new Date(Date.now() - parseInt(options.update) * 60 * 1000) : false,
-			detailLevel: options.detailLevel,
 		})
 		await fs.writeFile('data.json', JSON.stringify(data));
 		console.log('Done.');
@@ -55,7 +56,7 @@ program
 // TODO: spider
 // program 
 // 	.command('spider')
-// 	.argument('<server>', 'server which on account is registered')
+// 	.argument('<region>', 'region which on account is registered')
 // 	.argument('[account]', 'starting account the data collection should start')
 // 	.option('-t, --time <duration>', 'stop collecting after specified time')
 // 	.option('-n, --number-of-matches <numberOfMatches>', 'stop collecting after selected number of matches')
