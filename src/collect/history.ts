@@ -121,7 +121,7 @@ export const collectHistory = async (
 		}
 	}
 
-	games.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+	games.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 
 	// Update raw data stuff as we want to return it for research proposes for now
 	data.props.pageProps.games.data = games;
