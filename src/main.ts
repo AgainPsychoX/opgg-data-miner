@@ -132,29 +132,22 @@ program
 		// For each game on main account, include other participants stats.
 		// Try to score how likely teammates/enemies selection by the system was favorable for the main account.
 		// Calculate average favorability in losing and winning games.
-		let winningGamesCount = 0;
-		let losingGamesCount = 0;
-		let winningGamesSumFavorabilityScore = 0;
-		let losingGamesSumFavorabilityScore = 0;
+		let i = 0;
 		for (const game of mainAccountData.props.pageProps.games.data) {
 			if (game.is_remake) continue;
-			let favorabilityScore = 0;
 			const createdAt = new Date(game.created_at);
 
 			const ourParticipant = (game.participants as any[]).find(p => p.summoner.summoner_id === mainAccountSummonerId);
-			const ourTeam = ourParticipant.stats.team_key;
 
 			for (const participant of game.participants) {
 				const summonerId = participant.summoner.summoner_id as string;
-				if (summonerId == mainAccountSummonerId) {
-					continue;
-				}
 				const name = participant.summoner.name as string;
-				const team = participant.stats.team_key;
 
-				const games = otherAccountsData[name].props.pageProps.games.data as any[];
+				const accountData = (summonerId == mainAccountSummonerId) ? mainAccountData : otherAccountsData[name];
+				const games = accountData.props.pageProps.games.data as any[];
 				const gamesBefore = games.filter(g => (new Date(g.created_at) < createdAt && !g.is_remake));
 				
+				let playerScore = 0;
 				for (let i = 0; i < gamesBefore.length; i++) {
 					const gameBefore = gamesBefore[i];
 					const participantInGameBefore = (gameBefore.participants as any[]).find(p => p.summoner.summoner_id === summonerId);
@@ -162,28 +155,17 @@ program
 					let partialScore = 0;
 					if (participantInGameBefore.stats.result === "WIN") partialScore += 10; // good mood
 					partialScore += participantInGameBefore.stats.op_score; // well played
-
 					partialScore *= Math.pow(0.5, i); // make older games less important
-					if (ourTeam === team)
-						favorabilityScore += partialScore;
-					else
-						favorabilityScore -= partialScore;
+					playerScore += partialScore;
 				}
-			}
 
-			game.favorabilityScore = favorabilityScore;
-			if (ourParticipant.stats.result === "WIN") {
-				winningGamesCount++;
-				winningGamesSumFavorabilityScore += favorabilityScore;
+				participant.mood_score = playerScore;
 			}
-			else {
-				losingGamesCount++;
-				losingGamesSumFavorabilityScore += favorabilityScore;
-			}
+			
+			const avgAlly = (game.participants as any[]).filter(p => p.team_key === ourParticipant.team_key && p !== ourParticipant).map(p => p.mood_score).reduce((p, c) => p + c) / 5;
+			const avgEnemy = (game.participants as any[]).filter(p => p.team_key !== ourParticipant.team_key).map(p => p.mood_score).reduce((p, c) => p + c) / 5;
+			console.log(`Game #${++i} at ${createdAt.toLocaleString()}. Result: ${ourParticipant.stats.result}. Our mood: ${ourParticipant.mood_score.toFixed(1)}, avg ally: ${avgAlly.toFixed(1)}, avg enemy: ${avgEnemy.toFixed(1)}`);
 		}
-
-		console.log(`Winning games count: ${winningGamesCount}, favorability score: ${winningGamesSumFavorabilityScore / winningGamesCount}`);
-		console.log(`Losing games count: ${losingGamesCount}, favorability score: ${losingGamesSumFavorabilityScore / losingGamesCount}`);
 
 		await fs.writeFile('data.json', JSON.stringify(mainAccountData));
 		console.log('Done.');
