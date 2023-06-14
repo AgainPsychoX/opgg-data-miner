@@ -1,3 +1,4 @@
+import{ access } from 'fs/promises';
 
 export const knownRegions = ['eune', 'euw', 'na', 'lan', 'oce', 'ru', 'jp', 'br', 'tr', 'las', 'kr'] as const;
 export type Region = typeof knownRegions[number];
@@ -27,3 +28,6 @@ export const commonHeaders = {
 export async function delay(milliseconds: number) {
 	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
+
+export const canAccess = (path: string, mode?: number) => 
+	new Promise<boolean>(r => access(path, mode).then(() => r(true)).catch(() => r(false)));

@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import { Argument, Command, Option } from "commander";
 import { collectHistory } from '@/collect/history';
 import { delay, knownRegions, parseRegion, parseTimestamp, Region } from '@/common';
+import { GameRawData, ParticipantRawData } from './models/Game';
 
 // Global stuff
 const program = new Command();
@@ -30,7 +31,7 @@ program
 	)
 	.argument('<account>', 'account whom data is related')
 	.description('collect match history data for selected account name at selected region')
-	.option('-u, --update [maxMinutes]', 'request update before collecting data, optionally only if older than provided', false)
+	.option('-u, --update [maxMinutes]', 'request update before collecting data, optionally only if older than provided', '10')
 	// TODO: 
 	// .option('-o, --output [file]', 'file to where data should be outputted, with file extension defining format', 'data.json')
 	.addOption(new Option('-a, --after <timestamp>', 'collects only matches younger than specified timestamp.')
@@ -52,13 +53,13 @@ program
 			console.error(`Unknown region. Supported regions: ${knownRegions.map(x => x.toUpperCase()).join(', ')}.`);
 			return;
 		}
-		const { data } = await collectHistory(region, account, {
+		const games = await collectHistory(region, account, {
 			update: options.update ? new Date(Date.now() - parseInt(options.update) * 60 * 1000) : false,
 			maxCount: options.maxCount,
 			since: options.after,
-
-		})
-		await fs.writeFile('data.json', JSON.stringify(data));
+			cache: true,
+		});
+		await fs.writeFile('data.json', JSON.stringify(games));
 		console.log('Done.');
 	})
 ;
@@ -83,16 +84,23 @@ program
 			return;
 		}
 		
-		const { data: mainAccountData } = await collectHistory(region, account, {
+		const mainAccountGames = await collectHistory(region, account, {
 			update: new Date(Date.now() - 10 * 60 * 1000),
 			maxCount: options.maxCount,
 			since: options.after,
+			cache: true,
 		})
-		const mainAccountSummonerId = mainAccountData.props.pageProps.data.summoner_id;
+		if (mainAccountGames.length == 0) {
+			console.warn('No games for the account!');
+			return;
+		}
+		const mainAccountSummonerId = mainAccountGames[0]!.participants
+			.find(p => p.summoner.name.toLowerCase() === account.toLowerCase())!
+			.summoner.summoner_id;
 
 		// Find how deep match history we need access for each player the main account came across
 		const oldestGameDateToFetchByParticipant: Record<string, Date> = {};
-		for (const game of mainAccountData.props.pageProps.games.data) {
+		for (const game of mainAccountGames) {
 			if (game.is_remake) continue;
 			const createdAt = new Date(game.created_at);
 			for (const participant of game.participants) {
@@ -117,14 +125,15 @@ program
 		const accountsCount = Object.keys(oldestGameDateToFetchByParticipant).length;
 		console.log(`There are ${accountsCount} accounts for which match history will be downloaded.`);
 		let accountsDownloadedCount = 0;
-		const otherAccountsData: Record<string, any> = {};
+		const otherAccountsGames: Record<string, GameRawData[]> = {};
 		const timeBehindToConsider = 8 * 60 * 60 * 1000;
 		for (const [name, oldestGameDate] of Object.entries(oldestGameDateToFetchByParticipant)) {
-			const { data } = await collectHistory(region, name, {
+			const games = await collectHistory(region, name, {
 				update: new Date(Date.now() - 10 * 60 * 1000),
 				since: new Date(+oldestGameDate - timeBehindToConsider),
+				cache: true,
 			});
-			otherAccountsData[name] = data;
+			otherAccountsGames[name] = games;
 			console.log(`Downloaded: ${++accountsDownloadedCount} / ${accountsCount}`);
 			await delay(1000); // let API rest so we don't get banned
 		}
@@ -133,23 +142,28 @@ program
 		// Try to score how likely teammates/enemies selection by the system was favorable for the main account.
 		// Calculate average favorability in losing and winning games.
 		let i = 0;
-		for (const game of mainAccountData.props.pageProps.games.data) {
+		for (const game of mainAccountGames) {
 			if (game.is_remake) continue;
 			const createdAt = new Date(game.created_at);
 
-			const ourParticipant = (game.participants as any[]).find(p => p.summoner.summoner_id === mainAccountSummonerId);
+			type ParticipantRawDataWithMood = ParticipantRawData & { mood_score: number };
+			
+			const ourParticipant = (game.participants as ParticipantRawDataWithMood[]).find(p => p.summoner.summoner_id === mainAccountSummonerId)!;
 
-			for (const participant of game.participants) {
+			for (const participant of game.participants as ParticipantRawDataWithMood[]) {
 				const summonerId = participant.summoner.summoner_id as string;
 				const name = participant.summoner.name as string;
 
-				const accountData = (summonerId == mainAccountSummonerId) ? mainAccountData : otherAccountsData[name];
-				const games = accountData.props.pageProps.games.data as any[];
+				const games = (summonerId == mainAccountSummonerId) ? mainAccountGames : otherAccountsGames[name];
+				if (!games || games.length == 0) {
+					console.warn(`There was problem fetching games for '${name}'`);
+					continue;
+				}
 				const gamesBefore = games.filter(g => (new Date(g.created_at) < createdAt && !g.is_remake));
 				
 				let playerScore = 0;
 				for (let i = 0; i < gamesBefore.length; i++) {
-					const gameBefore = gamesBefore[i];
+					const gameBefore = gamesBefore[i]!;
 					const participantInGameBefore = (gameBefore.participants as any[]).find(p => p.summoner.summoner_id === summonerId);
 					
 					let partialScore = 0;
@@ -162,12 +176,17 @@ program
 				participant.mood_score = playerScore;
 			}
 			
-			const avgAlly = (game.participants as any[]).filter(p => p.team_key === ourParticipant.team_key && p !== ourParticipant).map(p => p.mood_score).reduce((p, c) => p + c) / 5;
-			const avgEnemy = (game.participants as any[]).filter(p => p.team_key !== ourParticipant.team_key).map(p => p.mood_score).reduce((p, c) => p + c) / 5;
+			const avgAlly = (game.participants as any[])
+				.filter(p => p.team_key === ourParticipant.team_key && p !== ourParticipant)
+				.map(p => p.mood_score)
+				.reduce((p, c) => p + c) / 5;
+			const avgEnemy = (game.participants as any[])
+				.filter(p => p.team_key !== ourParticipant.team_key)
+				.map(p => p.mood_score).
+				reduce((p, c) => p + c) / 5;
 			console.log(`Game #${++i} at ${createdAt.toLocaleString()}. Result: ${ourParticipant.stats.result}. Our mood: ${ourParticipant.mood_score.toFixed(1)}, avg ally: ${avgAlly.toFixed(1)}, avg enemy: ${avgEnemy.toFixed(1)}`);
 		}
 
-		await fs.writeFile('data.json', JSON.stringify(mainAccountData));
 		console.log('Done.');
 	})
 ;

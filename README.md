@@ -17,9 +17,9 @@ opgg https://euw.op.gg/summoner/userName=Azzapp
 
 ### To-do
 
-- role detection
-- progress bars
-- ...
++ spider mode
++ progress bars
++ ...
 
 
 
