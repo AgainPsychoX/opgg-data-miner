@@ -1,8 +1,7 @@
 import axios from "axios"
-// import { OpggHistory } from "@/models/OpggHistory";
 import { commonHeaders, Region } from "@/common";
 import { Cache, getDefaultCache } from "@/utils/cache";
-import { GameRawData } from "@/models/Game";
+import { GameRawData, GameType } from "@/models/Game";
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -18,7 +17,10 @@ export async function collectHistory(
 		 * than provided date, or always if true, or never if false.
 		 */
 		update?: Date | boolean,
-		gameType?: string,
+		/**
+		 * If specified, collect games only of specified type (queue type). Defaults to solo ranked.
+		 */
+		gameType?: GameType | 'TOTAL',
 		/**
 		 * Limits fetched games to those created since given date. 
 		 */
@@ -31,13 +33,15 @@ export async function collectHistory(
 		 * Cache instance to use, or true to use default ones, or false (default) to prevent caching.
 		 */
 		cache?: Cache | boolean;
+
+		onRawData?: (data: any) => void;
 	},
 ): Promise<GameRawData[]> {
 	// Default options
 	if (!options) {
 		options = {};
 	}
-	options.gameType ||= 'soloranked';
+	options.gameType ||= 'SOLORANKED';
 
 	console.debug(`Beginning to collect history for account '${userName}', region ${region.toUpperCase()}`);
 
@@ -95,6 +99,10 @@ export async function collectHistory(
 			delete data.props.pageProps.data[key];
 		}
 		options.cache.putPlayerData(data.props.pageProps.data);
+	}
+
+	if (options.onRawData) {
+		options.onRawData(data);
 	}
 
 	let wasUpdated = false;
@@ -171,17 +179,23 @@ export async function collectHistory(
 		console.debug(`Requesting first games via API`);
 		const { data } = await axios({
 			method: 'GET',
-			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType}`,
+			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType.toLowerCase()}`,
 			headers: commonHeaders
 		});
 		endedAtParam = encodeURIComponent(data.meta.last_game_created_at);
-		games.push(...data.data);
+
+		const moreGames = data.data as GameRawData[];
+		const game_type = options.gameType.toLowerCase();
+		games.push(...moreGames.filter(game => game.queue_info.game_type.toLowerCase() == game_type));
 		console.debug(`Games count: ${games.length}`);
 	}
 	else {
 		console.debug(`First games loaded from initial website load`);
 		endedAtParam = encodeURIComponent(data.props.pageProps.games.meta.last_game_created_at);
-		games.push(...data.props.pageProps.games.data);
+
+		const moreGames = data.props.pageProps.games.data as GameRawData[];
+		const game_type = options.gameType.toLowerCase();
+		games.push(...moreGames.filter(game => game.queue_info.game_type.toLowerCase() == game_type));
 		console.debug(`Games count: ${games.length}`);
 	}
 
@@ -196,7 +210,7 @@ export async function collectHistory(
 		console.debug(`Requesting next games via API`);
 		const { data } = await axios({
 			method: 'GET',
-			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&ended_at=${endedAtParam}&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType}`,
+			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&ended_at=${endedAtParam}&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType.toLowerCase()}`,
 			headers: commonHeaders
 		});
 		const moreGames = data.data as GameRawData[];
@@ -208,7 +222,6 @@ export async function collectHistory(
 		}
 
 		games.push(...data.data);
-
 		console.debug(`Games count: ${games.length}`);
 
 		if (options.maxCount && options.maxCount <= games.length) {
@@ -227,6 +240,10 @@ export async function collectHistory(
 	}
 
 	if (options.cache) {
+		// TODO: prevent cache-shorting on restarts after interrupted collecting, 
+		//  i.e. player has 200 games, but first run fetched (and put to cache) first 40.
+		//  Remaining games will not be fetched currently, because it sees only 40.
+
 		const gamesFromCache = await options.cache.getGamesForPlayer(userName);
 		if (gamesFromCache) {
 			const mapped = new Map(games.map(game => [game.id, game]));

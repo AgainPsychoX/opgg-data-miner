@@ -1,4 +1,4 @@
-import{ access } from 'fs/promises';
+import fs from 'fs/promises';
 
 export const knownRegions = ['eune', 'euw', 'na', 'lan', 'oce', 'ru', 'jp', 'br', 'tr', 'las', 'kr'] as const;
 export type Region = typeof knownRegions[number];
@@ -6,7 +6,7 @@ export type Region = typeof knownRegions[number];
 export function parseRegion(string: string): Region | undefined {
 	string = string.toLowerCase();
 	if (!knownRegions.includes(string as Region)) {
-		return undefined;
+		throw new Error(`Unknown region. Supported regions: ${knownRegions.map(x => x.toUpperCase()).join(', ')}.`);
 	}
 	return string as Region;
 }
@@ -29,5 +29,25 @@ export async function delay(milliseconds: number) {
 	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
-export const canAccess = (path: string, mode?: number) => 
-	new Promise<boolean>(r => access(path, mode).then(() => r(true)).catch(() => r(false)));
+export function canAccess(path: string, mode?: number) {
+	return new Promise<boolean>(r => fs.access(path, mode).then(() => r(true)).catch(() => r(false)));
+}
+
+export async function parseSeparatedListOrLoadFromFile(string: string, splitRegex: RegExp = /\n|\r|\r\n/) {
+	if (string.startsWith('@')) {
+		const text = await fs.readFile(string.substring(1), 'utf-8');
+		return text.split(splitRegex);
+	}
+	else {
+		return string.split(',');
+	}
+}
+
+export function mapAndSetReplacer(key: string, value: any) {
+	if (value instanceof Map)
+		return Object.fromEntries(value.entries());
+	if (value instanceof Set)
+		return Array.from(value.values());
+
+	return value;
+}

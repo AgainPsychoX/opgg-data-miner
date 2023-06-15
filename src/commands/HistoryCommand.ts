@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import { Argument, Command, Option } from "commander";
-import { Region, knownRegions, parseRegion, parseTimestamp } from "@/common";
+import { Region, parseRegion, parseTimestamp } from "@/common";
 import { collectHistory } from "@/collect/history";
 
 export function registerHistoryCommand(parent: Command) {
@@ -28,19 +28,16 @@ export function registerHistoryCommand(parent: Command) {
 		// 		.choices(['solo', 'flex', 'all'])
 		// 		.default('solo')
 		// )
-		.action(async (region: Region | undefined, account: string, options: any, command: Command) => {
-			if (!region) {
-				console.error(`Unknown region. Supported regions: ${knownRegions.map(x => x.toUpperCase()).join(', ')}.`);
-				return;
-			}
+		.action(async (region: Region, account: string, options: any, command: Command) => {
 			const games = await collectHistory(region, account, {
 				update: options.update ? new Date(Date.now() - parseInt(options.update) * 60 * 1000) : false,
 				maxCount: options.maxCount,
 				since: options.after,
 				cache: true,
+				onRawData: data => fs.writeFile('data.json', JSON.stringify(data)),
 			});
-			await fs.writeFile('data.json', JSON.stringify(games));
-			console.log('Done.');
+
+			await fs.writeFile('games.json', JSON.stringify(games));
 		})
 	;
 	return that;

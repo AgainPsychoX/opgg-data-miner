@@ -1,6 +1,6 @@
 import path from 'path'
 import fs from 'fs/promises';
-import { Region, canAccess } from '@/common';
+import { Region, canAccess, mapAndSetReplacer } from '@/common';
 import { PlayerRawData } from '@/models/Player';
 import { GameRawData } from '@/models/Game';
 
@@ -91,7 +91,7 @@ export class Cache {
 				}
 			}
 			else {
-				console.warn(`Failed loading cached game`);
+				console.warn(`Failed finding cached game ID: '${id}'`);
 			}
 		}
 		this._cachedPlayersMeta = new Map(Object.entries(playersMeta));
@@ -120,6 +120,10 @@ export class Cache {
 	async putPlayerData(data: PlayerRawData): Promise<void> {
 		if (!data.region) throw new Error("Expected region to be filled after downloading");
 		await fs.writeFile(path.join(this._playersFolder, data.name) + '.json', JSON.stringify(data, undefined, this._space), 'utf-8');
+		this._cachedPlayers.add(data.name);
+		const meta: PlayerCacheMeta = this._cachedPlayersMeta.get(data.name) || { lastGameCreatedAt: new Date(0), gameIds: new Set() };
+		meta.lastUpdatedAt = new Date(data.updated_at);
+		this._cachedPlayersMeta.set(data.name, meta);
 	}
 
 	async getGamesForPlayer(userName: string): Promise<GameRawData[] | undefined> {
@@ -132,7 +136,7 @@ export class Cache {
 					games.push(game);
 				}
 				else {
-					console.warn(`Failed loading cached game`);
+					console.warn(`Failed finding cached game ID: '${id}' for user: '${userName}'`);
 				}
 			}
 			games.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
@@ -150,6 +154,7 @@ export class Cache {
 
 	async putGame(data: GameRawData): Promise<void> {
 		await fs.writeFile(path.join(this._gamesFolder, data.id) + '.json', JSON.stringify(data, undefined, this._space), 'utf-8');
+		this._cachedGames.add(data.id);
 
 		for (const participant of data.participants) {
 			const key = participant.summoner.name;
@@ -162,13 +167,4 @@ export class Cache {
 		// TODO: move to dispose, on process end
 		await fs.writeFile(this._playersMetaFile, JSON.stringify(this._cachedPlayersMeta, mapAndSetReplacer, this._space), 'utf-8');
 	}
-}
-
-function mapAndSetReplacer(key: string, value: any) {
-	if (value instanceof Map)
-		return Object.fromEntries(value.entries());
-	if (value instanceof Set)
-		return Array.from(value.values());
-
-	return value;
 }

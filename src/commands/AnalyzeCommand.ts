@@ -1,5 +1,5 @@
 import { Argument, Command, Option } from "commander";
-import { Region, delay, knownRegions, parseRegion, parseTimestamp } from "@/common";
+import { Region, delay, parseRegion, parseTimestamp } from "@/common";
 import { GameRawData, ParticipantRawData } from "@/models/Game";
 import { collectHistory } from "@/collect/history";
 
@@ -17,12 +17,7 @@ export function registerAnalyzeCommand(parent: Command) {
 		.addOption(new Option('-n, --max-count <number>', 'limits max number of matches to be collected.')
 			.argParser(parseInt)
 		)
-		.action(async (region: Region | undefined, account: string, options: any, command: Command) => {
-			if (!region) {
-				console.error(`Unknown region. Supported regions: ${knownRegions.map(x => x.toUpperCase()).join(', ')}.`);
-				return;
-			}
-			
+		.action(async (region: Region, account: string, options: any, command: Command) => {
 			const mainAccountGames = await collectHistory(region, account, {
 				update: new Date(Date.now() - 10 * 60 * 1000),
 				maxCount: options.maxCount,

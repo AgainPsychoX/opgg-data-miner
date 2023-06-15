@@ -1,5 +1,22 @@
 import { SummonerRawData } from "./Player";
 
+export type GameType = 'SOLORANKED' | 'FLEXRANKED' | 'NORMAL' | 'ARAM' | 'BOT' | 'CLASH' | 'EVENT' | 'URF';
+
+export function rankValue({tier, division, lp}: {tier: string | null, division: number, lp?: number}) {
+	switch (tier) {
+		case 'UNRANKED': case null: return -1000; // unranked
+		case 'IRON':     return -2400 + (division * 100);
+		case 'BRONZE':   return -2000 + (division * 100);
+		case 'SILVER':   return -1600 + (division * 100);
+		case 'GOLD':     return -1200 + (division * 100);
+		case 'PLATINUM': return -800  + (division * 100);
+		case 'DIAMOND':  return -400  + (division * 100);
+		case 'MASTER': case 'GRANDMASTER': case 'CHALLENGER': return lp || 0;
+	}
+	console.assert(false, `Failed to get numeric value for rank! tier: ${tier}, division: ${division}, lp: ${lp}`);
+	return -1;
+}
+
 export interface ParticipantRawData {
 	summoner: SummonerRawData;
 	participant_id: number;
@@ -80,7 +97,7 @@ export interface GameRawData {
 	queue_info: {
 		id: number;
 		queue_translate: string;
-		game_type: string;
+		game_type: GameType;
 	};
 	version: string;
 	game_length_second: number;

@@ -25,4 +25,9 @@ registerHistoryCommand(program);
 registerAnalyzeCommand(program);
 registerSpiderCommand(program);
 
-program.parseAsync(process.argv);
+program
+	.parseAsync(process.argv)
+	.catch(error => {
+		console.error(error);
+	})
+;

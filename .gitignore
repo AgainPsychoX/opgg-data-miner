@@ -29,11 +29,6 @@ yarn-error.log*
 # output
 /dist
 /build
-/cache
-/output
-data.json
-
-
 
 
 
@@ -53,5 +48,15 @@ private/
 Thumbs.db
 
 
+
+################################################################################
+# Project specific
+################################################################################
+
+/cache
+/output
+data.json
+games.json
+spiderState.json
 
 
