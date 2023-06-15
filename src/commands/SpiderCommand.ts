@@ -8,9 +8,8 @@ import { ParticipantRawData, rankValue } from "@/models/Game";
 
 const orderChoices = [
 	'low', 'high', 'close', // lower, higher or close rank (compared to initial account)
-	'recent-together',     // by most number of games played together in last 20 games (descending)
-	'active', 'inactive', // by latest game or oldest games
-	'connected',         // by number of cached games participated
+	'active', 'inactive',  // by latest game or oldest games
+	'connected',          // by number of cached games participated
 	'random',
 ] as const;
 type Order = typeof orderChoices[number];
@@ -23,6 +22,9 @@ interface SpiderState {
 	accountsPriorities: Map<string, number>;
 	accountsVisited: Set<string>;
 	gamesCount: number;
+	options: {
+		order: Order;
+	};
 }
 
 export function registerSpiderCommand(parent: Command) {
@@ -44,6 +46,7 @@ export function registerSpiderCommand(parent: Command) {
 				if (loadedState) {
 					region = loadedState.region;
 					account = loadedState.startAccount;
+					options.order = loadedState.options.order;
 					console.log(`Continuing spider action, region: ${region.toUpperCase()}`);
 				}
 				else {
@@ -76,6 +79,7 @@ export function registerSpiderCommand(parent: Command) {
 				accountsPriorities: new Map(),
 				accountsVisited: new Set(),
 				gamesCount: 0,
+				options,
 			};
 			const { startAccount, startTimestamp, accountsPriorities, accountsVisited } = loadedState;
 			let { startAccountRankValue, gamesCount } = loadedState;
@@ -143,6 +147,7 @@ export function registerSpiderCommand(parent: Command) {
 					accountsPriorities,
 					accountsVisited,
 					gamesCount,
+					options,
 				});
 
 				// Look for next account
