@@ -94,7 +94,7 @@ export function registerSpiderCommand(parent: Command) {
 					calculatePriority = account => +cache.getPlayerCacheMeta(account)!.rankValue;
 					break;
 				case 'close': 
-					calculatePriority = account => Math.abs(cache.getPlayerCacheMeta(account)!.rankValue - startAccountRankValue);	
+					calculatePriority = account => -Math.abs(cache.getPlayerCacheMeta(account)!.rankValue - startAccountRankValue);	
 					break;
 
 				case 'active': 
