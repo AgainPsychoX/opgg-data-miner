@@ -98,7 +98,7 @@ export async function collectHistory(
 		for (const key of purgeKeys) {
 			delete data.props.pageProps.data[key];
 		}
-		options.cache.putPlayerData(data.props.pageProps.data);
+		await options.cache.putPlayerData(data.props.pageProps.data);
 	}
 
 	if (options.onRawData) {
