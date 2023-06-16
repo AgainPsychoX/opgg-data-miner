@@ -178,6 +178,8 @@ async function loadSpiderState(): Promise<SpiderState | undefined> {
 	if (await canAccess('spiderState.json')) {
 		const data = JSON.parse(await fs.readFile(path.join('spiderState.json'), 'utf-8'));
 		data.startTimestamp = new Date(data.startTimestamp);
+		data.accountsPriorities = new Map(Object.entries(data.accountsPriorities));
+		data.accountsVisited = new Set(data.accountsVisited);
 		return data as SpiderState;
 	}
 	return undefined;
