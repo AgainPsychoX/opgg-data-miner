@@ -263,6 +263,8 @@ export async function collectHistory(
 			await options.cache.putGame(game);
 		}
 
+		await options.cache.savePlayersCacheMeta();
+
 		const gamesFromCache = await options.cache.getGamesForPlayer(userName);
 		if (gamesFromCache) {
 			const mapped = new Map(games.map(game => [game.id, game]));
