@@ -129,7 +129,8 @@ export class Cache {
 	 */
 	async putPlayerData(data: PlayerRawData): Promise<void> {
 		if (!data.region) throw new Error("Expected region to be filled after downloading");
-		await fs.writeFile(path.join(this._playersFolder, data.name) + '.json', JSON.stringify(data, undefined, this._space), 'utf-8');
+		const file = path.join(this._playersFolder, data.name) + '.json';
+		await fs.writeFile(file, JSON.stringify(data, undefined, this._space), 'utf-8');
 		this._cachedPlayers.add(data.name);
 		const meta: PlayerCacheMeta = this._playersCacheMeta.get(data.name) || newPlayerCacheMeta();
 		meta.lastUpdatedAt = new Date(data.updated_at);

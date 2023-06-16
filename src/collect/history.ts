@@ -76,6 +76,11 @@ export async function collectHistory(
 		url: `https://www.op.gg/summoners/${region}/${encodeURIComponent(userName)}`,
 		headers: commonHeaders,
 	});
+	const notRegistered = rawData.indexOf('<h2 class="header__title">This summoner is not registered') > 0; 
+	if (notRegistered) {
+		console.error(`Account '${userName}' on region ${region} is not registered. Probably changed name.`);
+		return [];
+	}
 	const dataBeginTagOffset = rawData.indexOf(dataBeginTag);
 	if (dataBeginTagOffset < 0) {
 		throw new Error(`Couldn't find necessary data. Website changed again?`);
