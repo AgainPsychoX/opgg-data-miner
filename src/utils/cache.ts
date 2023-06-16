@@ -133,10 +133,12 @@ export class Cache {
 		this._cachedPlayers.add(data.name);
 		const meta: PlayerCacheMeta = this._cachedPlayersMeta.get(data.name) || newPlayerCacheMeta();
 		meta.lastUpdatedAt = new Date(data.updated_at);
-		const newestTierInfo = data.lp_histories
-			.map(x => [new Date(x.created_at), x.tier_info] as const)
-			.reduce((previous, current) => +previous[0] < +current[0] ? current : previous)[1];
-		meta.rankValue = rankValue(newestTierInfo);
+		if (data.lp_histories.length > 0) {
+			const newestTierInfo = data.lp_histories
+				.map(x => [new Date(x.created_at), x.tier_info] as const)
+				.reduce((previous, current) => +previous[0] < +current[0] ? current : previous)[1];
+			meta.rankValue = rankValue(newestTierInfo);
+		}
 		this._cachedPlayersMeta.set(data.name, meta);
 	}
 
