@@ -161,6 +161,7 @@ export function registerSpiderCommand(parent: Command) {
 					}
 
 					if (bestPriority < priority) {
+						bestPriority = priority;
 						account = potentialNextAccount;
 					}
 				}
