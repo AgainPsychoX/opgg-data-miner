@@ -181,22 +181,37 @@ export async function collectHistory(
 			method: 'GET',
 			url: `https://op.gg/api/v1.0/internal/bypass/games/${region}/summoners/${summonerId}?&limit=${gamesLimitPerRequest}&hl=en_US&game_type=${options.gameType.toLowerCase()}`,
 			headers: commonHeaders
-		});
-		endedAtParam = encodeURIComponent(data.meta.last_game_created_at);
-
+		});		
 		const moreGames = data.data as GameRawData[];
+
+		// if (options.cache) {
+		// 	for (const game of moreGames) {
+		// 		options.cache.putGame(game);
+		// 	}
+		// }
+
 		const game_type = options.gameType.toLowerCase();
 		games.push(...moreGames.filter(game => game.queue_info.game_type.toLowerCase() == game_type));
 		console.debug(`Games count: ${games.length}`);
+
+		endedAtParam = encodeURIComponent(data.meta.last_game_created_at);
 	}
 	else {
 		console.debug(`First games loaded from initial website load`);
-		endedAtParam = encodeURIComponent(data.props.pageProps.games.meta.last_game_created_at);
-
+		
 		const moreGames = data.props.pageProps.games.data as GameRawData[];
+
+		// if (options.cache) {
+		// 	for (const game of moreGames) {
+		// 		options.cache.putGame(game);
+		// 	}
+		// }
+
 		const game_type = options.gameType.toLowerCase();
 		games.push(...moreGames.filter(game => game.queue_info.game_type.toLowerCase() == game_type));
 		console.debug(`Games count: ${games.length}`);
+
+		endedAtParam = encodeURIComponent(data.props.pageProps.games.meta.last_game_created_at);
 	}
 
 	while (true) {
@@ -215,13 +230,13 @@ export async function collectHistory(
 		});
 		const moreGames = data.data as GameRawData[];
 
-		if (options.cache) {
-			for (const game of moreGames) {
-				options.cache.putGame(game);
-			}
-		}
+		// if (options.cache) {
+		// 	for (const game of moreGames) {
+		// 		options.cache.putGame(game);
+		// 	}
+		// }
 
-		games.push(...data.data);
+		games.push(...moreGames);
 		console.debug(`Games count: ${games.length}`);
 
 		if (options.maxCount && options.maxCount <= games.length) {
@@ -240,9 +255,13 @@ export async function collectHistory(
 	}
 
 	if (options.cache) {
-		// TODO: prevent cache-shorting on restarts after interrupted collecting, 
+		// TODO: better way to prevent cache-shorting on restarts after interrupted collecting, 
 		//  i.e. player has 200 games, but first run fetched (and put to cache) first 40.
 		//  Remaining games will not be fetched currently, because it sees only 40.
+		// For now, we put games into the cache after source was exhausted
+		for (const game of games) {
+			options.cache.putGame(game);
+		}
 
 		const gamesFromCache = await options.cache.getGamesForPlayer(userName);
 		if (gamesFromCache) {
