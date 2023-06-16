@@ -15,7 +15,15 @@ export interface SummonerRawData {
 
 export interface PlayerRawData extends SummonerRawData {
 	renewable_at: string; // date
-	lp_histories: any[];
+	lp_histories: {
+		created_at: string; // data
+		tier_info: {
+			tier: string;
+			division: number;
+			lp: number;
+		};
+		elo_point: number;
+	}[];
 	previous_seasons: any[];
 	league_stats: any[];
 	most_champions: {

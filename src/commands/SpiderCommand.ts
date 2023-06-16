@@ -4,7 +4,6 @@ import { Argument, Command, Option } from "commander";
 import { Region, canAccess, mapAndSetReplacer, parseRegion } from "@/common";
 import { getDefaultCache } from "@/utils/cache";
 import { collectHistory } from "@/collect/history";
-import { ParticipantRawData, rankValue } from "@/models/Game";
 
 const orderChoices = [
 	'low', 'high', 'close', // lower, higher or close rank (compared to initial account)
@@ -86,40 +85,40 @@ export function registerSpiderCommand(parent: Command) {
 
 			/* Higher priority value means higher priority.
 			 */
-			let calculatePriority: (participant: ParticipantRawData) => Promise<number> = (p) => Promise.resolve(0);
+			let calculatePriority: (account: string) => number = account => 0;
 			switch (options.order as Order) {
 				case 'low':
-					calculatePriority = p => Promise.resolve(-rankValue(p.tier_info));
+					calculatePriority = account => -cache.getPlayerCacheMeta(account)!.rankValue;
 					break;
 				case 'high': 
-					calculatePriority = p => Promise.resolve(rankValue(p.tier_info));
+					calculatePriority = account => +cache.getPlayerCacheMeta(account)!.rankValue;
 					break;
 				case 'close': 
-					calculatePriority = p => Promise.resolve(Math.abs(rankValue(p.tier_info) - startAccountRankValue));
+					calculatePriority = account => Math.abs(cache.getPlayerCacheMeta(account)!.rankValue - startAccountRankValue);	
 					break;
 
 				case 'active': 
-					calculatePriority = async (p) => {
-						const meta = await cache.getPlayerCacheMeta(p.summoner.name);
+					calculatePriority = account => {
+						const meta = cache.getPlayerCacheMeta(account);
 						return +(meta?.lastGameCreatedAt || 0);
 					};
 					break;
 				case 'inactive':
-					calculatePriority = async (p) => {
-						const meta = await cache.getPlayerCacheMeta(p.summoner.name);
+					calculatePriority = account => {
+						const meta = cache.getPlayerCacheMeta(account);
 						return -(meta?.lastGameCreatedAt || 0);
 					};
 					break;
 
 				case 'connected':
-					calculatePriority = async (p) => {
-						const meta = await cache.getPlayerCacheMeta(p.summoner.name);
+					calculatePriority = account => {
+						const meta = cache.getPlayerCacheMeta(account);
 						return -(meta?.lastGameCreatedAt || 0);
 					};
 					break;
 
 				case 'random':
-					calculatePriority = p => Promise.resolve(Math.random());
+					calculatePriority = account => Math.random();
 					break;
 			}
 
@@ -130,12 +129,15 @@ export function registerSpiderCommand(parent: Command) {
 				accountsVisited.add(account);
 				gamesCount = cache._cachedGames.size;
 
+				if (account == startAccount) {
+					const meta = cache.getPlayerCacheMeta(account);
+					if (!meta) throw new Error();
+					startAccountRankValue = meta.rankValue;
+				}
+
 				for (const game of games) {
 					for (const participant of game.participants) {
-						if (participant.summoner.name == startAccount) {
-							startAccountRankValue = rankValue(participant.tier_info);
-						}
-						accountsPriorities.set(participant.summoner.name, await calculatePriority(participant));
+						accountsPriorities.set(participant.summoner.name, await calculatePriority(account));
 					}
 				}
 

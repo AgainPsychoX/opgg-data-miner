@@ -2,7 +2,7 @@ import path from 'path'
 import fs from 'fs/promises';
 import { Region, canAccess, mapAndSetReplacer } from '@/common';
 import { PlayerRawData } from '@/models/Player';
-import { GameRawData } from '@/models/Game';
+import { GameRawData, rankValue } from '@/models/Game';
 
 var defaultCache: Cache | undefined;
 
@@ -17,6 +17,15 @@ interface PlayerCacheMeta {
 	lastUpdatedAt?: Date; // undefined if player not cached
 	lastGameCreatedAt: Date; // earliest date (`new Date(0)`) if no games
 	gameIds: Set<string>;
+	rankValue: number;
+}
+
+function newPlayerCacheMeta(): PlayerCacheMeta {
+	return {
+		lastGameCreatedAt: new Date(0), 
+		gameIds: new Set(),
+		rankValue: -1000,
+	};
 }
 
 /**
@@ -80,14 +89,15 @@ export class Cache {
 		for (const id of this._cachedGames) {
 			const game = await this.getGame(id);
 			if (game) {
+				const createdAt = new Date(game.created_at);
 				for (const participant of game.participants) {
-					const meta = playersMeta[participant.summoner.name] ||= {
-						lastGameCreatedAt: new Date(0),
-						gameIds: new Set(),
-					};
+					const meta = playersMeta[participant.summoner.name] ||= newPlayerCacheMeta();
 
 					meta.gameIds.add(id);
-					meta.lastGameCreatedAt = new Date(Math.max(+meta.lastGameCreatedAt, +new Date(game.created_at)));
+					if (+meta.lastGameCreatedAt < +createdAt) {
+						meta.lastGameCreatedAt = createdAt;
+						meta.rankValue = rankValue(participant.tier_info);
+					}
 				}
 			}
 			else {
@@ -99,7 +109,7 @@ export class Cache {
 		await fs.writeFile(this._playersMetaFile, JSON.stringify(playersMeta, mapAndSetReplacer, this._space), 'utf-8');
 	}
 
-	async getPlayerCacheMeta(userName: string): Promise<PlayerCacheMeta | undefined> {
+	getPlayerCacheMeta(userName: string): PlayerCacheMeta | undefined {
 		return this._cachedPlayersMeta.get(userName);
 	}
 
@@ -121,8 +131,12 @@ export class Cache {
 		if (!data.region) throw new Error("Expected region to be filled after downloading");
 		await fs.writeFile(path.join(this._playersFolder, data.name) + '.json', JSON.stringify(data, undefined, this._space), 'utf-8');
 		this._cachedPlayers.add(data.name);
-		const meta: PlayerCacheMeta = this._cachedPlayersMeta.get(data.name) || { lastGameCreatedAt: new Date(0), gameIds: new Set() };
+		const meta: PlayerCacheMeta = this._cachedPlayersMeta.get(data.name) || newPlayerCacheMeta();
 		meta.lastUpdatedAt = new Date(data.updated_at);
+		const newestTierInfo = data.lp_histories
+			.map(x => [new Date(x.created_at), x.tier_info] as const)
+			.reduce((previous, current) => +previous[0] < +current[0] ? current : previous)[1];
+		meta.rankValue = rankValue(newestTierInfo);
 		this._cachedPlayersMeta.set(data.name, meta);
 	}
 
@@ -155,11 +169,15 @@ export class Cache {
 	async putGame(data: GameRawData): Promise<void> {
 		await fs.writeFile(path.join(this._gamesFolder, data.id) + '.json', JSON.stringify(data, undefined, this._space), 'utf-8');
 		this._cachedGames.add(data.id);
-
+		const createdAt = new Date(data.created_at);
+		
 		for (const participant of data.participants) {
 			const key = participant.summoner.name;
-			const meta: PlayerCacheMeta = this._cachedPlayersMeta.get(key) || { lastGameCreatedAt: new Date(0), gameIds: new Set() };
-			meta.lastGameCreatedAt = new Date(Math.max(+meta.lastGameCreatedAt, +new Date(data.created_at)));
+			const meta: PlayerCacheMeta = this._cachedPlayersMeta.get(key) || newPlayerCacheMeta();
+			if (+meta.lastGameCreatedAt < +createdAt) {
+				meta.lastGameCreatedAt = createdAt;
+				meta.rankValue = rankValue(participant.tier_info);
+			}
 			meta.gameIds.add(data.id);
 			this._cachedPlayersMeta.set(key, meta);
 		}
