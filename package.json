@@ -1,6 +1,6 @@
 {
 	"name": "opgg-data-miner",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Tool to scrap data from Op.GG service.",
 	"author": "AgainPsychoX",
 	"license": "ISC",
@@ -8,7 +8,8 @@
 		"opgg",
 		"league-of-legends",
 		"leagueoflegends",
-		"data"
+		"data-mining",
+		"scrapper"
 	],
 	"type": "module",
 	"main": "dist/index.js",
