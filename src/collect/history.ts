@@ -186,7 +186,7 @@ export async function collectHistory(
 
 		// if (options.cache) {
 		// 	for (const game of moreGames) {
-		// 		options.cache.putGame(game);
+		// 		await options.cache.putGame(game);
 		// 	}
 		// }
 
@@ -203,7 +203,7 @@ export async function collectHistory(
 
 		// if (options.cache) {
 		// 	for (const game of moreGames) {
-		// 		options.cache.putGame(game);
+		// 		await options.cache.putGame(game);
 		// 	}
 		// }
 
@@ -232,7 +232,7 @@ export async function collectHistory(
 
 		// if (options.cache) {
 		// 	for (const game of moreGames) {
-		// 		options.cache.putGame(game);
+		// 		await options.cache.putGame(game);
 		// 	}
 		// }
 
@@ -260,7 +260,7 @@ export async function collectHistory(
 		//  Remaining games will not be fetched currently, because it sees only 40.
 		// For now, we put games into the cache after source was exhausted
 		for (const game of games) {
-			options.cache.putGame(game);
+			await options.cache.putGame(game);
 		}
 
 		const gamesFromCache = await options.cache.getGamesForPlayer(userName);
