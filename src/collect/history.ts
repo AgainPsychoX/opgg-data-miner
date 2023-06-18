@@ -93,6 +93,10 @@ export async function collectHistory(
 	data.props.pageProps.data.region = region;
 	console.assert(data.props.pageProps.region == region);
 
+	if (options.onRawData) {
+		options.onRawData(data);
+	}
+
 	if (options.cache) {
 		const purgeKeys = [
 			'champions', 'championsById', 
@@ -104,10 +108,6 @@ export async function collectHistory(
 			delete data.props.pageProps.data[key];
 		}
 		await options.cache.putPlayerData(data.props.pageProps.data);
-	}
-
-	if (options.onRawData) {
-		options.onRawData(data);
 	}
 
 	let wasUpdated = false;
