@@ -37,7 +37,7 @@ export function registerSpiderCommand(parent: Command) {
 		// .option('-n, --number-of-matches <numberOfMatches>', 'stop collecting after selected number of matches')
 		// .option('-r, --rank <minimalRank> [maxRank]', 'collect data only from selected ranks range')
 		.addOption(new Option('--order <order>', 'Specifies order of choosing next accounts to collect.')
-			.choices(orderChoices).default('random'))
+			.choices(orderChoices))
 		.action(async (region: Region | 'continue', account: string, options: any, command: Command) => {
 			let loadedState: SpiderState | undefined;
 			if (region == 'continue') {
@@ -45,7 +45,7 @@ export function registerSpiderCommand(parent: Command) {
 				if (loadedState) {
 					region = loadedState.region;
 					account = loadedState.startAccount;
-					options.order = loadedState.options.order;
+					options.order ||= loadedState.options.order;
 					console.log(`Continuing spider action, region: ${region.toUpperCase()}`);
 				}
 				else {
@@ -66,6 +66,7 @@ export function registerSpiderCommand(parent: Command) {
 					}
 				}
 			}
+			options.order ||= 'random';
 
 			const cache = await getDefaultCache(region);
 
