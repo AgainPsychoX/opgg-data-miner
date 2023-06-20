@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { registerHistoryCommand } from "@/commands/HistoryCommand";
 import { registerAnalyzeCommand } from "@/commands/AnalyzeCommand";
 import { registerSpiderCommand } from "@/commands/SpiderCommand";
+import { registerNeo4jCommand } from "./commands/Neo4jCommand";
 
 const program = new Command();
 program
@@ -24,6 +25,7 @@ program
 registerHistoryCommand(program);
 registerAnalyzeCommand(program);
 registerSpiderCommand(program);
+registerNeo4jCommand(program);
 
 program
 	.parseAsync(process.argv)

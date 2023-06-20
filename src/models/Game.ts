@@ -2,6 +2,8 @@ import { SummonerRawData } from "./Player";
 
 export type GameType = 'SOLORANKED' | 'FLEXRANKED' | 'NORMAL' | 'ARAM' | 'BOT' | 'CLASH' | 'EVENT' | 'URF';
 
+export const rankTiers = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'] as const;
+
 export function rankValue({tier, division, lp}: {tier: string | null, division: number, lp?: number}) {
 	switch (tier) {
 		case 'UNRANKED': case null: return -1000; // unranked

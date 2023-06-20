@@ -24,8 +24,45 @@ export interface PlayerRawData extends SummonerRawData {
 		};
 		elo_point: number;
 	}[];
-	previous_seasons: any[];
-	league_stats: any[];
+	previous_seasons: {
+		season_id: number;
+		tier_info: {
+			tier: string;
+			division: number;
+			lp?: number | null;
+			tier_image_url: string;
+			border_image_url: string;
+		};
+		created_at?: string | null; // date
+	}[];
+	league_stats: {
+		queue_info: {
+			id: number;
+			queue_translate: string;
+			game_type: string;
+		},
+		tier_info: {
+			tier: string;
+			division: number;
+			lp: number;
+			tier_image_url: string;
+			border_image_url: string;
+		},
+		win: number;
+		lose: number;
+		is_hot_streak: boolean,
+		is_fresh_blood: boolean,
+		is_veteran: boolean,
+		is_inactive: boolean,
+		series: any,
+		updated_at: string, // data
+		league: {
+			id: number,
+			name: string,
+			udid: string,
+			translate: string;
+		}
+	}[];
 	most_champions: {
 		game_type: string;
 		season_id: number;
