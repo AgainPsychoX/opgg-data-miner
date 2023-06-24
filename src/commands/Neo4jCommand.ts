@@ -1,25 +1,25 @@
 import fs from 'fs/promises';
 import { Argument, Command, Option } from "commander";
 import neo4j, { DateTime, Session, int } from "neo4j-driver";
-import { Region, parseRegion, parseSeparatedListOrLoadFromFile } from "@/common";
+import { Region, canAccess, parseRegion, parseSeparatedListOrLoadFromFile } from "@/common";
 import { Cache, getDefaultCache } from "@/utils/cache";
 import { rankTiers } from "@/models/Game";
+import { WikiData, collectWiki } from '@/collect/wiki';
 
-async function addStaticData(opggData: any, session: Session) {
+async function addStaticOpGGData(opggData: any, session: Session) {
 	await session.executeWrite(async (tx) => {
 		tx.run(`
-			CREATE 
-				(:Position { key: 'TOP' }),
-				(:Position { key: 'JUNGLE' }),
-				(:Position { key: 'MID' }),
-				(:Position { key: 'ADC' }),
-				(:Position { key: 'SUPPORT' })
+			MERGE (:Position { key: 'TOP'     })
+			MERGE (:Position { key: 'JUNGLE'  })
+			MERGE (:Position { key: 'MID'     })
+			MERGE (:Position { key: 'ADC'     })
+			MERGE (:Position { key: 'SUPPORT' })
 		`);
 	});
 	
 	await session.executeWrite(async (tx) => {
 		const championsDataValues = Object.values(opggData.props.pageProps.data.championsById) as any;
-		console.log(`Adding champions data (about ${championsDataValues.length})`);
+		console.log(`Adding champions data from OpGG (about ${championsDataValues.length})`);
 		for (const championData of championsDataValues) {
 			await tx.run(`
 				MERGE (champion:Champion { id: $id })
@@ -214,6 +214,185 @@ async function addStaticData(opggData: any, session: Session) {
 		}
 
 		await tx.run(`MERGE (rank:Rank { name: 'Unranked', tier: 'UNRANKED', division: 1 })`)
+	});
+}
+
+async function addStaticWikiData(wikiData: WikiData, session: Session) {
+	await session.executeWrite(async (tx) => {
+		tx.run(`
+			MERGE (:Position { key: 'TOP',     name: 'Top'     })
+			MERGE (:Position { key: 'JUNGLE',  name: 'Jungle'  })
+			MERGE (:Position { key: 'MID',     name: 'Middle'  })
+			MERGE (:Position { key: 'ADC',     name: 'Bottom'  })
+			MERGE (:Position { key: 'SUPPORT', name: 'Support' })
+		`);
+	});
+
+	const classesSet = new Set();
+	const legacyClassesSet = new Set();
+	for (const championData of wikiData.champions) {
+		for (const className of championData.classes) {
+			classesSet.add(className);
+		}
+		for (const legacyClassName of championData.legacyClasses) {
+			legacyClassesSet.add(legacyClassName);
+		}
+	}
+	console.log(`Adding champions classes (incl. legacy classes) from Wiki`);
+	await session.executeWrite(async (tx) => {
+		for (const className of classesSet) {
+			tx.run(`MERGE (:ChampionClass { name: $className })`, { className });
+		}
+		for (const legacyClassName of legacyClassesSet) {
+			tx.run(`MERGE (:LegacyChampionClass { name: $legacyClassName })`, { legacyClassName });
+		}
+	});
+
+	// TODO: consider having separate nodes for resource used & range type
+	
+	await session.executeWrite(async (tx) => {
+		console.log(`Adding champions data from Wiki (about ${wikiData.champions.length})`);
+		for (const championData of wikiData.champions) {
+			await tx.run(`
+				MERGE (champion:Champion { name: $name })
+				SET champion.description = $description,
+					champion.title = $title,
+					champion.releaseDate = $releaseDate,
+					champion.releasePatch = $releasePatch,
+					champion.lastChangedPatch = $lastChangedPatch,
+					champion.resource = $resource,
+					champion.rangeType = $rangeType,
+					champion.baseHealth = $baseHealth,
+					champion.extraHealthPerLevel = $extraHealthPerLevel,
+					champion.baseHealthRegeneration = $baseHealthRegeneration,
+					champion.extraHealthRegenerationPerLevel = $extraHealthRegenerationPerLevel,
+					champion.baseMana = $baseMana,
+					champion.extraManaPerLevel = $extraManaPerLevel,
+					champion.baseManaRegeneration = $baseManaRegeneration,
+					champion.extraManaRegenerationPerLevel = $extraManaRegenerationPerLevel,
+					champion.baseArmour = $baseArmour,
+					champion.extraArmourPerLevel = $extraArmourPerLevel,
+					champion.baseMagicResistance = $baseMagicResistance,
+					champion.extraMagicResistancePerLevel = $extraMagicResistancePerLevel,
+					champion.movementSpeed = $movementSpeed,
+					champion.baseAttackDamage = $baseAttackDamage,
+					champion.extraAttackDamagePerLevel = $extraAttackDamagePerLevel,
+					champion.baseAttackSpeed = $baseAttackSpeed,
+					champion.extraAttackSpeedPerLevel = $extraAttackSpeedPerLevel,
+					champion.customAttackSpeedRatio = $customAttackSpeedRatio,
+					champion.attackRange = $attackRange,
+					champion.attackWindup = $attackWindup,
+					champion.damage = $damage,
+					champion.toughness = $toughness,
+					champion.control = $control,
+					champion.mobility = $mobility,
+					champion.utility = $utility,
+					champion.style = $style,
+					champion.difficulty = $difficulty,
+					champion.blueEssencePrice = $blueEssencePrice,
+					champion.riotPointsPrice = $riotPointsPrice
+				MERGE (champion)-[:belongsTo]->(class)
+			`, {
+				name: championData.name, 
+				description: championData.description,
+				title: championData.title,
+
+				releaseDate: neo4j.Date.fromStandardDate(new Date(championData.releaseDate)),
+				releasePatch: championData.releasePatch,
+				lastChangedPatch: championData.lastChangedPatch,
+
+				resource: championData.resource,
+				rangeType: championData.rangeType,
+
+				baseHealth: championData.stats.baseHealth,
+				extraHealthPerLevel: championData.stats.extraHealthPerLevel,
+				baseHealthRegeneration: championData.stats.baseHealthRegeneration,
+				extraHealthRegenerationPerLevel: championData.stats.extraHealthRegenerationPerLevel,
+
+				baseMana: championData.stats.baseMana || null,
+				extraManaPerLevel: championData.stats.extraManaPerLevel || null,
+				baseManaRegeneration: championData.stats.baseManaRegeneration || null,
+				extraManaRegenerationPerLevel: championData.stats.extraManaRegenerationPerLevel || null,
+
+				baseArmour: championData.stats.baseArmour,
+				extraArmourPerLevel: championData.stats.extraArmourPerLevel,
+				baseMagicResistance: championData.stats.baseMagicResistance,
+				extraMagicResistancePerLevel: championData.stats.extraMagicResistancePerLevel,
+
+				movementSpeed: championData.stats.movementSpeed,
+
+				baseAttackDamage: championData.stats.baseAttackDamage,
+				extraAttackDamagePerLevel: championData.stats.extraAttackDamagePerLevel,
+				baseAttackSpeed: championData.stats.baseAttackSpeed,
+				extraAttackSpeedPerLevel: championData.stats.extraAttackSpeedPerLevel,
+				customAttackSpeedRatio: championData.stats.customAttackSpeedRatio || null,
+				attackRange: championData.stats.attackRange,
+				attackWindup: championData.stats.attackWindup,
+
+				damage: championData.rating.damage,
+				toughness: championData.rating.toughness,
+				control: championData.rating.control,
+				mobility: championData.rating.mobility,
+				utility: championData.rating.utility,
+				style: championData.rating.style,
+				difficulty: championData.rating.difficulty,
+
+				blueEssencePrice: championData.blueEssencePrice,
+				riotPointsPrice: championData.riotPointsPrice,
+			});
+
+			for (const className of championData.classes) {
+				await tx.run(`
+					MATCH (champion:Champion { name: $championName }), (modernClass:ChampionClass { name: $className })
+					MERGE (champion)-[:belongsTo]->(modernClass)
+				`, { championName: championData.name, className });
+			}
+			for (const legacyClassName of championData.legacyClasses) {
+				await tx.run(`
+					MATCH (champion:Champion { name: $championName }), (legacyClass:LegacyChampionClass { name: $legacyClassName })
+					MERGE (champion)-[:belongsTo]->(legacyClass)
+				`, { championName: championData.name, legacyClassName });
+			}
+		}
+	});
+
+	await session.executeWrite(async (tx) => {
+		console.log(`Adding factions data from Wiki (about ${wikiData.factions.length})`);
+		for (const factionData of wikiData.factions) {
+			if (factionData.champions.length == 0 && factionData.otherRelatedChampions.length == 0) {
+				continue;
+			}
+
+			await tx.run(`
+				MERGE (faction:Faction { name: $name, description: $description })
+			`, { name: factionData.name, description: factionData.description });
+
+			for (const championName of factionData.champions) {
+				await tx.run(`
+					MATCH (champion:Champion { name: $championName }), (faction:Faction { name: $factionName })
+					MERGE (champion)-[:championOf]->(faction)
+				`, { factionName: factionData.name, championName });
+			}
+			for (const championName of factionData.otherRelatedChampions) {
+				await tx.run(`
+					MATCH (champion:Champion { name: $championName }), (faction:Faction { name: $factionName })
+					MERGE (champion)-[:relatedTo]->(faction)
+				`, { factionName: factionData.name, championName });
+			}
+		}
+	});
+
+	await session.executeWrite(async (tx) => {
+		console.log(`Connecting related champions`);
+		for (const championData of wikiData.champions) {
+			const aName = championData.name;
+			for (const bName of championData.relatedCharacters) {
+				await tx.run(`
+					MATCH (a:Champion { name: $aName }), (b:Champion { name: $bName })
+					MERGE (b)-[:relatedTo]->(a)
+				`, { aName, bName });
+			}
+		}
 	});
 }
 
@@ -485,22 +664,35 @@ async function addGamesData(cache: Cache, session: Session) {
 	}
 }
 
+async function loadWikiStaticData({refresh}: {refresh: boolean}) {
+	if (refresh || !(await canAccess('wiki-static.json'))) {
+		const wikiData = await collectWiki();
+		await fs.writeFile('wiki-static.json', JSON.stringify(wikiData, undefined, '\t'), 'utf-8');
+		return wikiData;
+	}
+	else {
+		return JSON.parse(await fs.readFile('wiki-static.json', 'utf-8')) as WikiData;
+	}
+}
+
 export function registerNeo4jCommand(parent: Command) {
 	const that = parent
 		.command('neo4j')
 		.addArgument(new Argument('<region>', `Region which cache should be exported to Neo4j database.`)
 			.argParser(parseRegion))
 		.description('Outputs local script cache to Neo4j database (university project requirement).')
-		.addOption(new Option('-p, --parts [parts]', `Comma-separated list of: empty,opgg-static,players,games`)
-			.default('empty,opgg-static,players,games'))
+		.addOption(new Option('-p, --parts [parts]', `Comma-separated list of: empty,wiki,opgg,players,games`)
+			.default('empty,wiki,opgg,players,games'))
+		.option('--refresh-wiki', 'Refreshes wiki cached data')
 		.action(async (region: Region, options: any, command: Command) => {
 			const parts = await parseSeparatedListOrLoadFromFile(options.parts, /,;:/g);
 
+			const wikiData = await loadWikiStaticData({refresh: options.refreshWiki});
+			const opggData = JSON.parse(await fs.readFile('opgg-static.json', 'utf-8'));
+			const cache = await getDefaultCache(region);
+
 			const driver = neo4j.driver('neo4j://localhost', neo4j.auth.basic('neo4j', 'AAaa11!!'));
 			await driver.verifyConnectivity();
-
-			const cache = await getDefaultCache(region);
-			const opggData = JSON.parse(await fs.readFile('data.json', 'utf-8'));
 			
 			const session = driver.session();
 			try {
@@ -510,8 +702,11 @@ export function registerNeo4jCommand(parent: Command) {
 						await tx.run(`MATCH (x) DETACH DELETE x`);
 					});
 				}
-				if (parts.includes('opgg-static')) {
-					await addStaticData(opggData, session);
+				if (parts.includes('opgg')) {
+					await addStaticOpGGData(opggData, session);
+				}
+				if (parts.includes('wiki')) {
+					await addStaticWikiData(wikiData, session);
 				}
 				if (parts.includes('players')) {
 					await addPlayersData(cache, opggData, session);
