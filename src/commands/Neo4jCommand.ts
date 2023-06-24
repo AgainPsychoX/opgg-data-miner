@@ -219,13 +219,11 @@ async function addStaticOpGGData(opggData: any, session: Session) {
 
 async function addStaticWikiData(wikiData: WikiData, session: Session) {
 	await session.executeWrite(async (tx) => {
-		tx.run(`
-			MERGE (:Position { key: 'TOP',     name: 'Top'     })
-			MERGE (:Position { key: 'JUNGLE',  name: 'Jungle'  })
-			MERGE (:Position { key: 'MID',     name: 'Middle'  })
-			MERGE (:Position { key: 'ADC',     name: 'Bottom'  })
-			MERGE (:Position { key: 'SUPPORT', name: 'Support' })
-		`);
+		await tx.run(`MERGE (p:Position { key: 'TOP'     }) SET p.name = 'Top'`);
+		await tx.run(`MERGE (p:Position { key: 'JUNGLE'  }) SET p.name = 'Jungle'`);
+		await tx.run(`MERGE (p:Position { key: 'MID'     }) SET p.name = 'Middle'`);
+		await tx.run(`MERGE (p:Position { key: 'ADC'     }) SET p.name = 'Bottom'`);
+		await tx.run(`MERGE (p:Position { key: 'SUPPORT' }) SET p.name = 'Support'`);
 	});
 
 	const classesSet = new Set();
@@ -645,10 +643,11 @@ async function addGamesData(cache: Cache, session: Session) {
 						MATCH 
 							(game:Game { id: $gameId }),
 							(player:Player { id: $playerId }),
-							(game)-[:playedBy]->(team:Team)-[:includes]->(performance:PlayerPerformance)-[:performedBy]->(player)
-						CREATE 
-							(performance)-[:used]->(item:Item { id: $itemId })
-					`, {
+							(game)-[:playedBy]->(team:Team)-[:includes]->(performance:PlayerPerformance)-[:performedBy]->(player),
+							(item:Item { id: $itemId })
+						MERGE 
+							(performance)-[:used]->(item)
+					`, {	
 						gameId: gameData.id,
 						playerId: int(participantData.summoner.id),
 						itemId: int(itemId),
