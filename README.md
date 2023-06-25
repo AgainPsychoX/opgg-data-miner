@@ -31,6 +31,9 @@ opgg spider continue
 
 ### To-do
 
++ Fix wiki scrapper:
+	+ Shen & Kennen names are bugged/empty
+	+ Nunu is named differently in OpGG static data
 + progress bars
 + handle URLs 
 	+ regex: `/(?:(\w+)\.)?op\.gg\/summoners?\/(?:(\w+)\/)?(?:userName=)?([^?#\/\s]*)/i` handles well:
