@@ -16,6 +16,7 @@ export async function getDefaultCache(region: Region) {
 interface PlayerCacheMeta {
 	lastUpdatedAt?: Date; // undefined if player not cached
 	lastGameCreatedAt: Date; // earliest date (`new Date(0)`) if no games
+	id: number;
 	gameIds: Set<string>;
 	rankValue: number;
 }
@@ -24,6 +25,7 @@ function newPlayerCacheMeta(): PlayerCacheMeta {
 	return {
 		lastGameCreatedAt: new Date(0), 
 		gameIds: new Set(),
+		id: NaN,
 		rankValue: -1000,
 	};
 }
@@ -133,6 +135,7 @@ export class Cache {
 		await fs.writeFile(file, JSON.stringify(data, undefined, this._space), 'utf-8');
 		this._cachedPlayers.add(data.name);
 		const meta: PlayerCacheMeta = this._playersCacheMeta.get(data.name) || newPlayerCacheMeta();
+		meta.id = data.id;
 		meta.lastUpdatedAt = new Date(data.updated_at);
 		if (data.lp_histories.length > 0) {
 			const newestTierInfo = data.lp_histories
@@ -177,6 +180,7 @@ export class Cache {
 		for (const participant of data.participants) {
 			const key = participant.summoner.name;
 			const meta: PlayerCacheMeta = this._playersCacheMeta.get(key) || newPlayerCacheMeta();
+			meta.id = participant.summoner.id;
 			if (+meta.lastGameCreatedAt < +createdAt) {
 				meta.lastGameCreatedAt = createdAt;
 				meta.rankValue = rankValue(participant.tier_info);

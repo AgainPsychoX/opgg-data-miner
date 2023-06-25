@@ -351,6 +351,12 @@ async function addStaticWikiData(wikiData: WikiData, session: Session) {
 					MERGE (champion)-[:belongsTo]->(legacyClass)
 				`, { championName: championData.name, legacyClassName });
 			}
+			for (const positionKey of championData.positions) {
+				await tx.run(`
+					MATCH (champion:Champion { name: $championName }), (position:Position { key: $positionKey })
+					MERGE (champion)-[:belongsTo]->(position)
+				`, { championName: championData.name, positionKey });
+			}
 		}
 	});
 
@@ -439,7 +445,8 @@ async function addPlayersData(cache: Cache, opggData:any, session: Session) {
 			}
 			else {
 				// console.debug(`Processing player '${name}' (not fully updated), with ${meta.gameIds.size} related games`);
-				await tx.run(`MERGE (player:Player { name: $name })`, { name: name });
+				await tx.run(`MERGE (player:Player { id: $id, name: $name })`, 
+					{ id: int(meta.id), name: name });
 			}
 		});
 
@@ -457,10 +464,6 @@ async function addGamesData(cache: Cache, session: Session) {
 		const gameData = await cache.getGame(gameId);
 		if (!gameData) {
 			console.warn(`Missing game file, despite found in cache listing`);
-			continue;
-		}
-		if (!gameData.participants.find(p => p.summoner.name == 'Azzapp')){
-			// FIXME: for testing
 			continue;
 		}
 
@@ -535,7 +538,7 @@ async function addGamesData(cache: Cache, session: Session) {
 			for (const participantData of gameData.participants) {
 				// (player)-[:played]->(game), 
 				// (game)-[:playedBy]->(player), 
-				await tx.run(`
+				const result = await tx.run(`
 					MATCH 
 						(game:Game { id: $gameId })-[:playedBy]->(team { key: $teamKey }),
 						(player:Player { id: $playerId }),
@@ -546,7 +549,6 @@ async function addGamesData(cache: Cache, session: Session) {
 						(secondaryRunePage:RunePage { id: $secondaryRunePageId }),
 						(a1stSpell:Spell { id: $a1stSpellId }),
 						(a2ndSpell:Spell { id: $a2ndSpellId }),
-						(trinket:Item { id: $trinketItemId }),
 						(rank:Rank { tier: $tier, division: $division})
 					CREATE 
 						(performance:PlayerPerformance {
@@ -590,7 +592,6 @@ async function addGamesData(cache: Cache, session: Session) {
 						(performance)-[:used]->(secondaryRunePage),
 						(performance)-[:used]->(a1stSpell),
 						(performance)-[:used]->(a2ndSpell),
-						(performance)-[:used]->(trinket),
 						(performance)-[:belongsTo]->(rank)
 				`, {
 					gameId: gameData.id, 
@@ -632,10 +633,30 @@ async function addGamesData(cache: Cache, session: Session) {
 					secondaryRunePageId: int(participantData.rune.secondary_page_id),
 					a1stSpellId: int(participantData.spells[0]!),
 					a2ndSpellId: int(participantData.spells[1]!),
-					trinketItemId: int(participantData.trinket_item),
 					tier: participantData.tier_info.tier || 'UNRANKED',
 					division: int(participantData.tier_info.division || 1),
 				});
+				if (result.summary.counters.updates().nodesCreated != 1) {
+					console.assert(false, "Expected one node created for PlayerPerformance!");
+					// Note: in some very rare cases rune information seem to be missing for no reason...
+					// Example game: https://www.op.gg/summoners/euw/Tumbalin/matches/ewOhykeZdefLXSlfxFTkGIpAppFk8KH1xsK1mOrxW9A%3D/1685635905000
+				}
+
+				if (participantData.trinket_item) {
+					await tx.run(`
+						MATCH 
+							(game:Game { id: $gameId }),
+							(player:Player { id: $playerId }),
+							(game)-[:playedBy]->(team:Team)-[:includes]->(performance:PlayerPerformance)-[:performedBy]->(player),
+							(item:Item { id: $itemId })
+						MERGE 
+							(performance)-[:used]->(item)
+					`, {	
+						gameId: gameData.id,
+						playerId: int(participantData.summoner.id),
+						itemId: int(participantData.trinket_item),
+					});
+				}
 
 				for (const itemId of participantData.items) {
 					if (!itemId) continue;
