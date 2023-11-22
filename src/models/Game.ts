@@ -2,16 +2,17 @@ import { SummonerRawData } from "./Player";
 
 export type GameType = 'SOLORANKED' | 'FLEXRANKED' | 'NORMAL' | 'ARAM' | 'BOT' | 'CLASH' | 'EVENT' | 'URF';
 
-export const rankTiers = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'] as const;
+export const rankTiers = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'] as const;
 
 export function rankValue({tier, division, lp}: {tier: string | null, division: number, lp?: number}) {
 	switch (tier) {
 		case 'UNRANKED': case null: return -1000; // unranked
-		case 'IRON':     return -2400 + (division * 100);
-		case 'BRONZE':   return -2000 + (division * 100);
-		case 'SILVER':   return -1600 + (division * 100);
-		case 'GOLD':     return -1200 + (division * 100);
-		case 'PLATINUM': return -800  + (division * 100);
+		case 'IRON':     return -2800 + (division * 100);
+		case 'BRONZE':   return -2400 + (division * 100);
+		case 'SILVER':   return -2000 + (division * 100);
+		case 'GOLD':     return -1600 + (division * 100);
+		case 'PLATINUM': return -1200 + (division * 100);
+		case 'EMERALD':  return -800  + (division * 100);
 		case 'DIAMOND':  return -400  + (division * 100);
 		case 'MASTER': case 'GRANDMASTER': case 'CHALLENGER': return lp || 0;
 	}
